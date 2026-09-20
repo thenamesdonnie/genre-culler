@@ -1,0 +1,299 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Genre Culler</title>
+<style>
+  :root { --bg:#121212; --card:#1c1c1c; --card2:#242424; --text:#eaeaea; --muted:#9a9a9a; --green:#1db954; --red:#e0405a; --amber:#f5b942; --border:#2c2c2c; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  header { position:sticky; top:0; z-index:5; background:#0d0d0d; border-bottom:1px solid var(--border); padding:10px 16px; display:flex; flex-wrap:wrap; gap:10px 16px; align-items:center; }
+  header h1 { font-size:18px; margin:0 12px 0 0; color:var(--green); }
+  select, input[type=text] { background:var(--card2); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:14px; }
+  button { background:var(--card2); color:var(--text); border:1px solid var(--border); border-radius:6px; padding:6px 12px; font-size:14px; cursor:pointer; }
+  button:hover { border-color:#555; }
+  button.primary { background:var(--green); color:#000; border-color:var(--green); font-weight:600; }
+  button.danger { background:var(--red); color:#fff; border-color:var(--red); font-weight:600; }
+  button.danger:disabled { opacity:.5; cursor:wait; }
+  button.small { padding:3px 8px; font-size:13px; }
+  .muted { color:var(--muted); }
+  main { max-width:1100px; margin:0 auto; padding:16px; }
+  .toolbar { display:flex; flex-wrap:wrap; gap:10px 18px; align-items:center; margin-bottom:14px; }
+  .toolbar label { display:flex; gap:6px; align-items:center; font-size:14px; color:var(--muted); }
+  .stats { margin-bottom:14px; color:var(--muted); font-size:14px; }
+  .stats b { color:var(--text); }
+  .grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(330px, 1fr)); gap:12px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:12px 14px; display:flex; flex-direction:column; gap:8px; }
+  .card.kept { opacity:.45; }
+  .card .title { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+  .card .genre { font-weight:700; font-size:17px; text-transform:capitalize; }
+  .card .count { color:var(--muted); white-space:nowrap; }
+  .card .example { font-size:14px; }
+  .card .example .name { font-weight:600; }
+  .card .actions { display:flex; flex-wrap:wrap; gap:6px; margin-top:auto; }
+  .card iframe { width:100%; height:80px; border:0; border-radius:8px; }
+  .tracklist { max-height:220px; overflow:auto; font-size:13px; background:var(--card2); border-radius:6px; padding:6px 8px; }
+  .tracklist div { padding:2px 0; border-bottom:1px solid var(--border); }
+  .tracklist span { color:var(--muted); }
+  .tags { font-size:12px; color:var(--muted); }
+  #toast { position:fixed; left:50%; bottom:22px; transform:translateX(-50%); background:#222; border:1px solid #444; border-radius:10px; padding:12px 16px; display:none; gap:14px; align-items:center; box-shadow:0 8px 30px #000a; z-index:10; }
+  #toast.show { display:flex; }
+  .banner { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:20px; margin:30px auto; max-width:620px; }
+  .progress { color:var(--amber); }
+  details summary { cursor:pointer; color:var(--muted); font-size:13px; }
+  .history { margin-top:28px; font-size:14px; }
+  .history div { padding:4px 0; }
+  a { color:var(--green); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Genre Culler</h1>
+  <span id="who" class="muted"></span>
+  <select id="playlist"></select>
+  <button id="scan" class="primary">Scan</button>
+  <span id="scanProgress" class="progress"></span>
+</header>
+<main>
+  <div id="loginBanner" class="banner" style="display:none">
+    <p>Not logged in to Spotify yet.</p>
+    <p><a href="/login"><button class="primary">Log in with Spotify</button></a></p>
+    <p class="muted">Opens Spotify's consent page for this app, then comes straight back here.</p>
+    <p class="muted">Already logged in and something says a permission is missing? Go to <a href="/login">/login</a> directly: a token keeps whatever permissions it was issued with, so a new one has to be requested.</p>
+  </div>
+  <div id="app" style="display:none">
+    <div class="toolbar">
+      <label>Group by
+        <select id="mode">
+          <option value="primary">Claude microgenre</option>
+          <option value="claudeRarest">Claude tags, rarest first</option>
+          <option value="rarest">All tags, rarest first</option>
+          <option value="parent">Broad genre family</option>
+        </select>
+      </label>
+      <label id="minSizeWrap">Min group size <input type="range" id="minSize" min="1" max="60" value="6"> <b id="minSizeVal">6</b></label>
+      <label>Sort
+        <select id="sort">
+          <option value="small">smallest first</option>
+          <option value="big">biggest first</option>
+          <option value="az">A to Z</option>
+        </select>
+      </label>
+      <label><input type="text" id="search" placeholder="filter genres"></label>
+      <label><input type="checkbox" id="hideKept" checked> hide kept</label>
+      <button id="reapply" class="small" title="Re-read the MusicBrainz and Claude caches without refetching the playlist">Reapply genre data</button>
+    </div>
+    <div class="stats" id="stats"></div>
+    <div class="grid" id="grid"></div>
+    <div class="history" id="history"></div>
+  </div>
+</main>
+<div id="toast"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const state = { playlistId: null, scan: null, culls: [], kept: {}, examples: {}, playing: null, expanded: {} };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' }[c]));
+const api = async (method, url, body) => {
+  const r = await fetch(url, { method, headers: body ? { 'Content-Type': 'application/json' } : {}, body: body ? JSON.stringify(body) : undefined });
+  const j = await r.json();
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+};
+const keptKey = () => `kept-${state.playlistId}`;
+const loadKept = () => { try { state.kept = JSON.parse(localStorage.getItem(keptKey())) || {}; } catch { state.kept = {}; } };
+const saveKept = () => { try { localStorage.setItem(keptKey(), JSON.stringify(state.kept)); } catch {} };
+
+let toastTimer;
+function toast(html, ms = 8000) {
+  const t = $('#toast'); t.innerHTML = html; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove('show'), ms);
+}
+
+// ---------- grouping ----------
+function buildGroups() {
+  const tracks = state.scan.tracks;
+  const mode = $('#mode').value;
+  const minSize = Number($('#minSize').value);
+  const groups = new Map();
+  const put = (g, t) => { if (!groups.has(g)) groups.set(g, []); groups.get(g).push(t); };
+  const tagsOf = t => mode === 'claudeRarest' ? (t.claudeTags || []) : (t.genres || []);
+  const count = new Map();
+  if (mode === 'primary') {
+    // Groups smaller than the slider fold into the song's next best label that is big enough,
+    // else into a "<family> (misc)" bucket, so the wall of one-song cards disappears.
+    const pc = new Map();
+    for (const t of tracks) if (t.primary) pc.set(t.primary, (pc.get(t.primary) || 0) + 1);
+    for (const t of tracks) for (const g of (t.claudeTags || [])) if (g !== t.primary) count.set(g, (count.get(g) || 0) + 1);
+    for (const t of tracks) {
+      if (!t.primary) { put('no genre data', t); continue; }
+      if (pc.get(t.primary) >= minSize) { put(t.primary, t); continue; }
+      const alt = (t.claudeTags || []).filter(g => g !== t.primary && (pc.get(g) || 0) + (count.get(g) || 0) >= minSize)
+        .sort((a, b) => ((pc.get(a) || 0) + (count.get(a) || 0)) - ((pc.get(b) || 0) + (count.get(b) || 0)))[0];
+      put(alt || `${t.parent || 'other'} (misc)`, t);
+    }
+    count.clear();
+  } else if (mode === 'parent') {
+    for (const t of tracks) put(t.parent || 'no genre data', t);
+  } else {
+    for (const t of tracks) for (const g of tagsOf(t)) count.set(g, (count.get(g) || 0) + 1);
+    for (const t of tracks) {
+      const tags = tagsOf(t);
+      if (!tags.length) { put('no genre data', t); continue; }
+      const sorted = [...tags].sort((a, b) => count.get(a) - count.get(b)); // rarest first
+      const pick = sorted.find(g => count.get(g) >= minSize) || sorted[sorted.length - 1];
+      put(pick, t);
+    }
+  }
+  let list = [...groups].map(([genre, tracks]) => ({ genre, tracks, tagged: count.get(genre) || 0 }));
+  const sort = $('#sort').value;
+  if (sort === 'small') list.sort((a, b) => a.tracks.length - b.tracks.length || a.genre.localeCompare(b.genre));
+  else if (sort === 'big') list.sort((a, b) => b.tracks.length - a.tracks.length || a.genre.localeCompare(b.genre));
+  else list.sort((a, b) => a.genre.localeCompare(b.genre));
+  return list;
+}
+
+function pickExample(group, fresh) {
+  const key = group.genre;
+  if (!fresh && state.examples[key] && group.tracks.some(t => t.uri === state.examples[key].uri)) return state.examples[key];
+  const candidates = group.tracks.filter(t => t.id);
+  const prev = state.examples[key];
+  let ex = candidates[Math.floor(Math.random() * candidates.length)] || group.tracks[0];
+  if (fresh && candidates.length > 1 && prev && ex.uri === prev.uri) ex = candidates.find(t => t.uri !== prev.uri);
+  state.examples[key] = ex;
+  return ex;
+}
+
+// ---------- render ----------
+function render() {
+  if (!state.scan) return;
+  const groups = buildGroups();
+  const q = $('#search').value.trim().toLowerCase();
+  const hideKept = $('#hideKept').checked;
+  const tracks = state.scan.tracks;
+  const withGenre = tracks.filter(t => t.genres.length).length;
+  const withPrimary = tracks.filter(t => t.primary).length;
+  const cov = state.scan.coverage || {};
+  $('#stats').innerHTML = `<b>${state.scan.playlist.name}</b>: <b>${tracks.length}</b> tracks, <b>${groups.length}</b> groups. Claude has classified <b>${withPrimary}</b> tracks (${cov.claudeArtists || 0} artists, ${cov.songsClassified || 0} song-level), Last.fm tags for ${cov.lastfmWithTags || 0} artists, MusicBrainz tags for ${cov.mbWithTags || 0} of ${cov.mbArtists || 0} looked up. <b>${withGenre}</b> tracks have any tag at all. Scanned ${new Date(state.scan.scannedAt).toLocaleString()}.`;
+  $('#minSizeWrap').style.display = $('#mode').value === 'parent' ? 'none' : '';
+  const visible = groups.filter(g => (!q || g.genre.includes(q)) && !(hideKept && state.kept[g.genre]));
+  $('#grid').innerHTML = visible.map(g => {
+    const ex = pickExample(g);
+    const artists = ex.artists.map(a => a.name).join(', ');
+    const playing = state.playing === g.genre && ex.id;
+    const kept = !!state.kept[g.genre];
+    const isNoData = g.genre === 'no genre data';
+    return `<div class="card ${kept ? 'kept' : ''}" data-genre="${esc(g.genre)}">
+      <div class="title"><span class="genre">${esc(g.genre)}</span><span class="count">${g.tracks.length} song${g.tracks.length === 1 ? '' : 's'}${g.tagged > g.tracks.length ? ` <span title="tracks tagged with this genre anywhere, including ones filed under a rarer genre">(${g.tagged} tagged)</span>` : ''}</span></div>
+      <div class="example">e.g. <span class="name">${esc(ex.name)}</span> <span class="muted">by ${esc(artists)}${ex.year ? ` (${ex.year})` : ''}</span></div>
+      ${playing ? `<iframe src="https://open.spotify.com/embed/track/${ex.id}?utm_source=generator&theme=0" allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture" loading="lazy"></iframe>` : ''}
+      <div class="tags">${esc([...(ex.claudeTags || []), ...(ex.lfTags || []).map(x => x + ' (lf)'), ...(ex.mbTags || []).map(x => x + ' (mb)')].filter(x => x !== g.genre).slice(0, 7).join(' · '))}${ex.confidence && ex.confidence < 0.5 ? ' <span title="Claude was unsure about this one">· low confidence</span>' : ''}${ex.songLevel && ex.artistPrimary && ex.artistPrimary !== ex.primary ? ` <span title="song-level label differs from the artist label">· artist: ${esc(ex.artistPrimary)}</span>` : ''}</div>
+      ${state.expanded[g.genre] ? `<div class="tracklist">${g.tracks.map(t => `<div>${esc(t.name)} <span>${esc(t.artists.map(a => a.name).join(', '))}</span></div>`).join('')}</div>` : ''}
+      <div class="actions">
+        ${ex.id ? `<button class="small" data-act="play">${playing ? 'Hide player' : 'Play'}</button>` : ''}
+        ${ex.id ? `<a href="https://open.spotify.com/track/${ex.id}" target="_blank"><button class="small">Open</button></a>` : ''}
+        <button class="small" data-act="another">Another</button>
+        <button class="small" data-act="tracks">${state.expanded[g.genre] ? 'Hide' : 'Show'} tracks</button>
+        <button class="small" data-act="keep">${kept ? 'Unkeep' : 'Keep'}</button>
+        ${isNoData ? '' : `<button class="small danger" data-act="cull">Remove all ${g.tracks.length}</button>`}
+      </div>
+    </div>`;
+  }).join('') || '<p class="muted">Nothing matches.</p>';
+  renderHistory();
+}
+
+function renderHistory() {
+  const h = state.culls.slice().reverse();
+  $('#history').innerHTML = h.length ? `<h3>Removed so far</h3>` + h.map(c =>
+    `<div>${new Date(c.at).toLocaleTimeString()} · <b>${esc(c.genre)}</b> · ${c.count} songs ${c.undone ? '<span class="muted">(restored)</span>' : `<button class="small" data-undo="${c.id}">Undo</button>`}</div>`
+  ).join('') + `<p class="muted">Removed songs live in a private playlist called "Culled from ${esc(state.scan.playlist.name)}" until you delete it.</p>` : '';
+}
+
+$('#grid').addEventListener('click', async e => {
+  const btn = e.target.closest('button[data-act]'); if (!btn) return;
+  const card = btn.closest('.card'); const genre = card.dataset.genre;
+  const group = buildGroups().find(g => g.genre === genre); if (!group) return;
+  const act = btn.dataset.act;
+  if (act === 'play') { state.playing = state.playing === genre ? null : genre; render(); }
+  else if (act === 'another') { pickExample(group, true); if (state.playing !== genre) state.playing = null; render(); }
+  else if (act === 'tracks') { state.expanded[genre] = !state.expanded[genre]; render(); }
+  else if (act === 'keep') { if (state.kept[genre]) delete state.kept[genre]; else state.kept[genre] = true; saveKept(); render(); }
+  else if (act === 'cull') {
+    btn.disabled = true; btn.textContent = 'Removing…';
+    try {
+      const r = await api('POST', '/api/cull', { playlistId: state.playlistId, genre, uris: group.tracks.map(t => t.uri) });
+      await refreshScan(); await refreshCulls();
+      toast(`Removed <b>${r.removed}</b> songs filed under <b>${esc(genre)}</b>. <button class="small" data-undo="${r.cullId}">Undo</button>`, 12000);
+    } catch (err) { toast(`Failed: ${esc(err.message)}`); render(); }
+  }
+});
+document.addEventListener('click', async e => {
+  const b = e.target.closest('button[data-undo]'); if (!b) return;
+  b.disabled = true; b.textContent = 'Restoring…';
+  try {
+    const r = await api('POST', '/api/undo', { playlistId: state.playlistId, cullId: b.dataset.undo });
+    await refreshScan(); await refreshCulls();
+    toast(`Restored ${r.restored} songs.`);
+  } catch (err) { toast(`Undo failed: ${esc(err.message)}`); }
+});
+
+// ---------- data ----------
+async function refreshScan() {
+  const r = await api('GET', `/api/scan/${state.playlistId}`);
+  if (r.scan) state.scan = r.scan;
+  render();
+  return r;
+}
+async function refreshCulls() { state.culls = await api('GET', `/api/culls/${state.playlistId}`); renderHistory(); }
+
+async function scan() {
+  $('#scan').disabled = true;
+  await api('POST', '/api/scan', { playlistId: state.playlistId });
+  const poll = async () => {
+    const r = await api('GET', `/api/scan/${state.playlistId}`);
+    if (r.job?.status === 'running') { $('#scanProgress').textContent = r.job.progress; setTimeout(poll, 1000); return; }
+    $('#scan').disabled = false;
+    if (r.job?.status === 'error') { $('#scanProgress').textContent = 'failed: ' + r.job.error; return; }
+    $('#scanProgress').textContent = '';
+    state.scan = r.scan; state.examples = {}; $('#app').style.display = '';
+    render();
+  };
+  poll();
+}
+
+async function selectPlaylist(id) {
+  state.playlistId = id; state.scan = null; state.playing = null; state.expanded = {}; state.examples = {};
+  loadKept();
+  const r = await refreshScan();
+  await refreshCulls();
+  $('#app').style.display = state.scan ? '' : 'none';
+  $('#scan').textContent = state.scan ? 'Rescan' : 'Scan';
+  if (r.job?.status === 'running') scan();
+}
+
+async function init() {
+  const s = await api('GET', '/api/status');
+  if (!s.loggedIn) { $('#loginBanner').style.display = ''; $('#who').textContent = s.error ? 'session expired' : ''; return; }
+  $('#who').innerHTML = esc(s.user.name + (s.user.product ? ` (${s.user.product})` : ''))
+    + ' <a href="/login" title="Log in again. Needed after the app asks Spotify for a new permission, because an existing token keeps the permissions it was issued with.">re-authorise</a>';
+  const pls = await api('GET', '/api/playlists');
+  const sel = $('#playlist');
+  sel.innerHTML = pls.map(p => `<option value="${p.id}">${esc(p.name)} (${p.total})</option>`).join('');
+  if (s.defaultPlaylist && pls.some(p => p.id === s.defaultPlaylist)) sel.value = s.defaultPlaylist;
+  sel.addEventListener('change', () => selectPlaylist(sel.value));
+  $('#scan').addEventListener('click', scan);
+  for (const id of ['#minSize', '#sort', '#hideKept', '#mode']) $(id).addEventListener('input', () => { $('#minSizeVal').textContent = $('#minSize').value; render(); });
+  $('#search').addEventListener('input', render);
+  $('#reapply').addEventListener('click', async () => {
+    $('#reapply').disabled = true;
+    try { await api('POST', '/api/reapply', { playlistId: state.playlistId }); await refreshScan(); toast('Genre data reapplied.'); }
+    catch (e) { toast('Reapply failed: ' + esc(e.message)); }
+    $('#reapply').disabled = false;
+  });
+  await selectPlaylist(sel.value);
+}
+init().catch(e => { document.body.insertAdjacentHTML('beforeend', `<p class="banner">Error: ${esc(e.message)}</p>`); });
+</script>
+</body>
+</html>
